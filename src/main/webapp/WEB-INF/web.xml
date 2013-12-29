@@ -5,10 +5,10 @@
 
 <web-app>
 
-    <!-- Servlets -->
     <servlet>
         <servlet-name>greetServlet</servlet-name>
         <servlet-class>petrglad.millinames.server.GreetingServiceImpl</servlet-class>
+        <load-on-startup>10</load-on-startup>
     </servlet>
 
     <servlet-mapping>

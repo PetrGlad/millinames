@@ -38,7 +38,7 @@ public class GwtTestmillinames extends GWTTestCase {
   }
 
   /**
-   * This test will send a request to the server using the greetServer method in
+   * This test will send a request to the server using the regenerate method in
    * GreetingService and verify the response.
    */
 //  public void testGreetingService() {
@@ -53,7 +53,7 @@ public class GwtTestmillinames extends GWTTestCase {
 //    delayTestFinish(10000);
 //
 //    // Send a request to the server.
-//    greetingService.greetServer(new AsyncCallback<String>() {
+//    greetingService.regenerate(new AsyncCallback<String>() {
 //      public void onFailure(Throwable caught) {
 //        // The request resulted in an unexpected error.
 //        fail("Request failure: " + caught.getMessage());
