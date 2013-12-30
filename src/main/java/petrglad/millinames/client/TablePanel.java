@@ -32,27 +32,11 @@ public class TablePanel extends VerticalPanel {
         header.add(lastNameHeader);
         add(header);
 
-        nameHeader.addClickHandler(new ClickHandler() {
-            @Override
-            public void onClick(ClickEvent event) {
-                sortOrder = true;
-                // TODO reload data here
-            }
-        });
-        lastNameHeader.addClickHandler(new ClickHandler() {
-            @Override
-            public void onClick(ClickEvent event) {
-                sortOrder = false;
-                // TODO reload data here
-            }
-        });
-
-
         scroll = new ScrollPanel();
         scroll.setHeight("400px");
         scroll.addScrollHandler(new ScrollHandler() {
             @Override
-            public void onScroll(ScrollEvent event) {
+            public void onScroll(final ScrollEvent event) {
                 loadPage(event.getRelativeElement().getScrollTop());
             }
         });
@@ -63,12 +47,27 @@ public class TablePanel extends VerticalPanel {
         scroll.add(contentPanel);
         add(scroll);
         loadPage(0);
+
+        nameHeader.addClickHandler(new ClickHandler() {
+            @Override
+            public void onClick(ClickEvent event) {
+                sortOrder = true;
+                loadPage(scroll.getVerticalScrollPosition());
+            }
+        });
+        lastNameHeader.addClickHandler(new ClickHandler() {
+            @Override
+            public void onClick(ClickEvent event) {
+                sortOrder = false;
+                loadPage(scroll.getVerticalScrollPosition());
+            }
+        });
     }
 
     public void loadPage(int scrollPosition) {
         final int totalHeight = rowHeight * LIST_SIZE;
         final int topRow = scrollPosition / rowHeight;
-        source.getBatch(topRow + 1, pageSize, sortOrder, new AsyncCallback<List<String[]>>() {
+        source.getBatch(topRow, pageSize, sortOrder, new AsyncCallback<List<String[]>>() {
             @Override
             public void onFailure(Throwable caught) {
             }

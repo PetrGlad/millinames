@@ -12,9 +12,7 @@ import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.sql.DataSource;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -64,6 +62,8 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
     @Override
     public void destroy() {
         LOG.info("Destroying servlet");
+        disposeCursors();
+
 //        ((ComboPooledDataSource)dataSource).close();
         withConnection(new Handler<Connection, Void>() {
             @Override
@@ -76,19 +76,70 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         super.destroy();
     }
 
+    private void disposeCursors() {
+        synchronized (cursors) {
+            for (CursorHolder ch : cursors.values())
+                ch.dispose();
+            cursors.clear();
+        }
+    }
+
+    // XXX This won't scale, sloppy resources management
+    class CursorHolder {
+
+        public final Connection conn;
+        private final ResultSet rs;
+
+        public CursorHolder(boolean orderByFirst) throws SQLException {
+            conn = dataSource.getConnection();
+
+            final Statement stat = conn.createStatement(
+                    ResultSet.TYPE_SCROLL_INSENSITIVE,
+                    ResultSet.CONCUR_READ_ONLY);
+            final String orderColumn = orderByFirst ? "first_name" : "last_name";
+            stat.execute("select first_name, last_name from names order by " + orderColumn);
+            rs = stat.getResultSet();
+            rs.setFetchDirection(ResultSet.FETCH_FORWARD);
+        }
+
+        public synchronized List<String[]> query(int row, int count) {
+            List<String[]> result = new ArrayList<String[]>();
+            try {
+                int resultCount = 0;
+                if (rs.absolute(row + 1)) {
+                    do {
+                        result.add(new String[]{rs.getString("first_name"), rs.getString("last_name")});
+                        resultCount++;
+                    } while (rs.next() && resultCount < count);
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+            return result;
+        }
+
+        public void dispose() {
+            try {
+                rs.close();
+            } catch (SQLException e) {
+                LOG.error("Can not close result set", e);
+            }
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                LOG.error("Can not close connection", e);
+            }
+        }
+    }
+
+    private final Map<Boolean, CursorHolder> cursors = new HashMap<Boolean, CursorHolder>();
+
     private void initDb() throws ServletException {
+        LOG.info("Opening database.");
         try {
-//            ComboPooledDataSource cpds = new ComboPooledDataSource();
-//            cpds.setDriverClass( "org.hsqldb.jdbcDriver" );
-//            cpds.setJdbcUrl( "jdbc:hsqldb:file:db/millinames-database;shutdown=true" );
-//            cpds.setUser("sa");
-//            cpds.setPassword("");
-//            cpds.setMinPoolSize(1);
-//            cpds.setAcquireIncrement(1);
-//            cpds.setMaxPoolSize(3);
-//            dataSource = cpds;
             dataSource = new DriverDataSource(null, "jdbc:hsqldb:file:db/millinames-database", "sa", ""); // ;shutdown=true
             doDbMigration();
+            LOG.info("Database ready,");
         } catch (Exception e) {
             throw new ServletException(e);
         }
@@ -106,22 +157,19 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
 
     @Override
     public List<String[]> getBatch(final int row, final int count, final boolean orderByFirst) {
-        return withConnection(new Handler<Connection, List<String[]>>() {
-            @Override
-            public List<String[]> put(Connection conn) throws SQLException {
-                // FIXME This is prototype stub
-                final Statement stat = conn.createStatement();
-                final String orderColumn = orderByFirst ? "first_name" : "last_name";
-                stat.execute("select limit " + row + "," + count + " first_name, last_name from names order by " + orderColumn);
-                //stat.execute("select top 20 first_name, last_name from names order by " + orderColumn);
-                final ResultSet rs = stat.getResultSet();
-                List<String[]> result = new ArrayList<String[]>();
-                while (rs.next()) {
-                    result.add(new String[]{rs.getString("first_name"), rs.getString("last_name")});
+        if (!cursors.containsKey(orderByFirst)) {
+            synchronized (cursors) {
+                if (!cursors.containsKey(orderByFirst)) {
+                    try {
+                        cursors.put(orderByFirst, new CursorHolder(orderByFirst));
+                    } catch (SQLException e) {
+                        LOG.error("Can not create cursor", e);
+                        throw new RuntimeException(e);
+                    }
                 }
-                return result;
             }
-        });
+        }
+        return cursors.get(orderByFirst).query(row, count);
     }
 
     @Override
@@ -144,39 +192,56 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
     }
 
     public int regenerateData(Connection conn) throws SQLException {
-        // See http://hsqldb.org/doc/guide/deployment-chapt.html
-        // "Bulk Inserts, Updates and Deletes"
         LOG.info("Reinitializing data.");
+        disposeCursors();
         conn.setAutoCommit(false);
-        final PreparedStatement stat = conn.prepareStatement("insert into names(first_name, last_name) values (?, ?)");
         final StopWatch sw = new StopWatch();
         sw.start();
         Statement statement = conn.createStatement();
+        LOG.info("Deleting old data.");
 //        statement.execute("set files log false");
 //        statement.execute("checkpoint");
 //        statement.execute("drop index names_first");
 //        statement.execute("drop index names_last");
-        LOG.info("Deleting old data.");
-        statement.execute("delete from names"); // More radical solution would be to drop table altogether and re-create it.
+//        statement.execute("delete from names");
+        statement.execute("drop table names"); // XXX This will interfere with opened cursors
+        // XXX duplicates flyway configs:
+        statement.execute("create cached table names (\n" +
+                "  first_name varchar(10),\n" +
+                "  last_name varchar(10)\n" +
+                ")");
+        statement.execute("create index names_first on names(first_name)");
+        statement.execute("create index names_last on names(last_name)");
         LOG.info("Data deleted.");
+        // See http://hsqldb.org/doc/guide/deployment-chapt.html
+        // "Bulk Inserts, Updates and Deletes"
+        // statement.execute("set files log false");
+        // statement.execute("checkpoint");
+        final PreparedStatement stat = conn.prepareStatement("insert into names(first_name, last_name) values (?, ?)");
         final Random r = new Random();
         int N = 1000000;
         char[] buffer = new char[10];
+        LOG.info("Inserting new data.");
         for (int i = 0; i < N; i++) {
             stat.setString(1, genName(r, buffer));
             stat.setString(2, genName(r, buffer));
             stat.execute();
-            if (i % 5000 == 0)
+            if (i % 5000 == 0)       {
                 conn.commit();
+                LOG.info("{} rows inserted.", i);
+            }
         }
-//        conn.commit();
-//        statement.execute("create index names_first on names(first_name)");
-//        statement.execute("create index names_last on names(last_name)");
         conn.commit();
+        LOG.info("New data inserted.");
+
 //        statement.execute("set files log true");
 //        statement.execute("checkpoint");
+//        LOG.info("Indexing");
+
+        conn.commit();
+        disposeCursors(); // XXX better not allow querying while regenerating data
         sw.stop();
-        LOG.info("Regenerated data in " + sw.getTotalTimeMillis() + "mSec.");
+        LOG.info("Regenerated data in " + (sw.getTotalTimeMillis() / 1000) + " sec.");
         return N;
     }
 
