@@ -213,6 +213,11 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         statement.execute("create index names_first on names(first_name)");
         statement.execute("create index names_last on names(last_name)");
         LOG.info("Data deleted.");
+
+        // Hehe, someone did this already
+        // http://stackoverflow.com/questions/13507947/hsqldb-optimize-1-000-000-bulk-insert
+        // http://stackoverflow.com/questions/13495452/create-embedded-hsqldb-in-web-app-directory
+
         // See http://hsqldb.org/doc/guide/deployment-chapt.html
         // "Bulk Inserts, Updates and Deletes"
         // statement.execute("set files log false");
@@ -225,12 +230,16 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         for (int i = 0; i < N; i++) {
             stat.setString(1, genName(r, buffer));
             stat.setString(2, genName(r, buffer));
-            stat.execute();
-            if (i % 5000 == 0)       {
+            stat.addBatch();
+            if (i % 5000 == 0) {
+                stat.executeBatch();
                 conn.commit();
+            }
+            if (i % 50000 == 0) {
                 LOG.info("{} rows inserted.", i);
             }
         }
+        stat.executeBatch();
         conn.commit();
         LOG.info("New data inserted.");
 
