@@ -67,7 +67,7 @@ public class TablePanel extends VerticalPanel {
     public void loadPage(int scrollPosition) {
         final int totalHeight = rowHeight * LIST_SIZE;
         final int topRow = scrollPosition / rowHeight;
-        contentPanel.setWidgetPosition(dataPagePanel, 0, rowHeight * topRow);
+        contentPanel.setWidgetPosition(dataPagePanel, 0, scrollPosition);
         source.getBatch(topRow, pageSize, sortOrder, new AsyncCallback<List<String[]>>() {
             @Override
             public void onFailure(Throwable caught) {
