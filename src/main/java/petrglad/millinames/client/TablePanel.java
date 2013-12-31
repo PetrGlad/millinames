@@ -67,6 +67,7 @@ public class TablePanel extends VerticalPanel {
     public void loadPage(int scrollPosition) {
         final int totalHeight = rowHeight * LIST_SIZE;
         final int topRow = scrollPosition / rowHeight;
+        contentPanel.setWidgetPosition(dataPagePanel, 0, rowHeight * topRow);
         source.getBatch(topRow, pageSize, sortOrder, new AsyncCallback<List<String[]>>() {
             @Override
             public void onFailure(Throwable caught) {
@@ -74,20 +75,18 @@ public class TablePanel extends VerticalPanel {
 
             @Override
             public void onSuccess(List<String[]> result) {
+                dataPagePanel.setHeight((result.size() * rowHeight) + "px");
                 while (dataPagePanel.getWidgetCount() > 0)
                     dataPagePanel.remove(0);
-                for (String[] row : result) {
+                for (String[] row : result)
                     dataPagePanel.add(formatRow(row));
-                }
-                dataPagePanel.setHeight((result.size() * rowHeight) + "px");
                 contentPanel.setHeight(totalHeight + "px");
-                contentPanel.setWidgetPosition(dataPagePanel, 0, rowHeight * topRow);
             }
         });
     }
 
     public Widget formatRow(String[] columns) {
-        HTML html = new HTML(columns[0] + " " + columns[1]);
+        Label html = new Label(columns[0] + " " + columns[1]);
         html.setHeight(rowHeight + "px");
         return html;
     }

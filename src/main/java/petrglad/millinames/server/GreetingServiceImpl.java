@@ -21,13 +21,31 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @SuppressWarnings("serial")
 public class GreetingServiceImpl extends RemoteServiceServlet implements GreetingService {
 
+    private static class DataHolder {
+        public final String[][] data; // [row, column]
+        public final Integer[][] indexes; // [index, position]
+
+        private DataHolder(String[][] data, Integer[][] indexes) {
+            this.data = data;
+            this.indexes = indexes;
+        }
+
+        public String[] get(int row, int index) {
+            return data[indexes[index][row]];
+        }
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(GreetingServiceImpl.class);
     private static final String ABC_CHARS = "abcdefghijklmnopqrstuvwxyz";
     private static final CharSequence CAPS_CHARS = ABC_CHARS.toUpperCase();
     private static final CharSequence NAME_CHARS = ABC_CHARS + "0123456789";
 
     private static final AtomicBoolean DATA_LOCKED = new AtomicBoolean(false);
+    private static final int COLUMN_COUNT = 2;
+
     private DataSource dataSource;
+
+    private DataHolder data;
 
     @Override
     public void init(ServletConfig config) throws ServletException {
@@ -35,7 +53,6 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         super.init(config);
         initDb();
     }
-
 
     public interface Handler<T, P> {
         P put(T v) throws SQLException;
@@ -62,9 +79,7 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
     @Override
     public void destroy() {
         LOG.info("Destroying servlet");
-        disposeCursors();
-
-//        ((ComboPooledDataSource)dataSource).close();
+        disposeCached();
         withConnection(new Handler<Connection, Void>() {
             @Override
             public Void put(Connection conn) throws SQLException {
@@ -76,70 +91,13 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         super.destroy();
     }
 
-    private void disposeCursors() {
-        synchronized (cursors) {
-            for (CursorHolder ch : cursors.values())
-                ch.dispose();
-            cursors.clear();
-        }
-    }
-
-    // XXX This won't scale, sloppy resources management
-    class CursorHolder {
-
-        public final Connection conn;
-        private final ResultSet rs;
-
-        public CursorHolder(boolean orderByFirst) throws SQLException {
-            conn = dataSource.getConnection();
-
-            final Statement stat = conn.createStatement(
-                    ResultSet.TYPE_SCROLL_INSENSITIVE,
-                    ResultSet.CONCUR_READ_ONLY);
-            final String orderColumn = orderByFirst ? "first_name" : "last_name";
-            stat.execute("select first_name, last_name from names order by " + orderColumn);
-            rs = stat.getResultSet();
-            rs.setFetchDirection(ResultSet.FETCH_FORWARD);
-        }
-
-        public synchronized List<String[]> query(int row, int count) {
-            List<String[]> result = new ArrayList<String[]>();
-            try {
-                int resultCount = 0;
-                if (rs.absolute(row + 1)) {
-                    do {
-                        result.add(new String[]{rs.getString("first_name"), rs.getString("last_name")});
-                        resultCount++;
-                    } while (rs.next() && resultCount < count);
-                }
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-            return result;
-        }
-
-        public void dispose() {
-            try {
-                rs.close();
-            } catch (SQLException e) {
-                LOG.error("Can not close result set", e);
-            }
-            try {
-                conn.close();
-            } catch (SQLException e) {
-                LOG.error("Can not close connection", e);
-            }
-        }
-    }
-
-    private final Map<Boolean, CursorHolder> cursors = new HashMap<Boolean, CursorHolder>();
-
     private void initDb() throws ServletException {
         LOG.info("Opening database.");
         try {
             dataSource = new DriverDataSource(null, "jdbc:hsqldb:file:db/millinames-database", "sa", ""); // ;shutdown=true
             doDbMigration();
             LOG.info("Database ready,");
+            cacheData();
         } catch (Exception e) {
             throw new ServletException(e);
         }
@@ -157,20 +115,84 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
 
     @Override
     public List<String[]> getBatch(final int row, final int count, final boolean orderByFirst) {
-        if (!cursors.containsKey(orderByFirst)) {
-            synchronized (cursors) {
-                if (!cursors.containsKey(orderByFirst)) {
-                    try {
-                        cursors.put(orderByFirst, new CursorHolder(orderByFirst));
-                    } catch (SQLException e) {
-                        LOG.error("Can not create cursor", e);
-                        throw new RuntimeException(e);
-                    }
+        cacheData();
+        assert data != null;
+        List<String[]> result = new ArrayList<String[]>(count);
+        for (int i = row; i < row + count; i++)
+            result.add(data.get(i, orderByFirst ? 0 : 1));
+        return result;
+    }
+
+    private void cacheData() {
+        if (data == null) {
+            synchronized (this) {
+                if (data == null) {
+                    data = sortData();
                 }
             }
         }
-        return cursors.get(orderByFirst).query(row, count);
     }
+
+    private void disposeCached() {
+        synchronized (this) {
+            data = null;
+        }
+    }
+
+    private DataHolder sortData() {
+        LOG.info("Loading data.");
+        final String[][] records = loadAll();
+        final Integer[][] indexes = new Integer[COLUMN_COUNT][];
+        LOG.info("Indexing.");
+        for (int c = 0; c < indexes.length; c++)
+            indexes[c] = sortIndexed(records, c);
+        LOG.info("Cache initialized.");
+        return new DataHolder(records, indexes);
+    }
+
+    private String[][] loadAll() {
+        return withConnection(new Handler<Connection, String[][]>() {
+            @Override
+            public String[][] put(Connection conn) throws SQLException {
+                Statement stat = conn.createStatement();
+                stat.execute("select count(*) from names");
+                int count;
+                {
+                    ResultSet rs = stat.getResultSet();
+                    rs.next();
+                    count = rs.getInt(1);
+                }
+                stat.execute("select first_name, last_name from names");
+                ResultSet rs = stat.getResultSet();
+                String[][] result = new String[count][];
+                int i = 0;
+                while (rs.next()) {
+                    result[i++] = new String[]{rs.getString("first_name"), rs.getString("last_name")};
+                    if (i % 100000 == 0) {
+                        LOG.info("{} rows cached.", i);
+                    }
+                }
+                return result;
+            }
+        });
+    }
+
+    private Integer[] sortIndexed(final String[][] records, final int column) {
+        long t = System.currentTimeMillis();
+        Integer[] index = new Integer[records.length];
+        for (int i = 0; i < records.length; i++) {
+            index[i] = i;
+        }
+        Arrays.sort(index, new Comparator<Integer>() {
+            @Override
+            public int compare(Integer o1, Integer o2) {
+                return records[o1][column].compareTo(records[o2][column]);
+            }
+        });
+        LOG.info("Indexing complete in {}", System.currentTimeMillis() - t);
+        return index;
+    }
+
 
     @Override
     public String regenerate() {
@@ -193,7 +215,6 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
 
     public int regenerateData(Connection conn) throws SQLException {
         LOG.info("Reinitializing data.");
-        disposeCursors();
         conn.setAutoCommit(false);
         final StopWatch sw = new StopWatch();
         sw.start();
@@ -210,8 +231,8 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
                 "  first_name varchar(10),\n" +
                 "  last_name varchar(10)\n" +
                 ")");
-        statement.execute("create index names_first on names(first_name)");
-        statement.execute("create index names_last on names(last_name)");
+//        statement.execute("create index names_first on names(first_name)");
+//        statement.execute("create index names_last on names(last_name)");
         LOG.info("Data deleted.");
 
         // Hehe, someone did this already
@@ -223,8 +244,8 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         // statement.execute("set files log false");
         // statement.execute("checkpoint");
         final PreparedStatement stat = conn.prepareStatement("insert into names(first_name, last_name) values (?, ?)");
-        final Random r = new Random();
         int N = 1000000;
+        final Random r = new Random();
         char[] buffer = new char[10];
         LOG.info("Inserting new data.");
         for (int i = 0; i < N; i++) {
@@ -248,13 +269,14 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
 //        LOG.info("Indexing");
 
         conn.commit();
-        disposeCursors(); // XXX better not allow querying while regenerating data
+        disposeCached();
+        cacheData();
         sw.stop();
         LOG.info("Regenerated data in " + (sw.getTotalTimeMillis() / 1000) + " sec.");
         return N;
     }
 
-    private String genName(Random r, char[] buffer) {
+    static String genName(Random r, char[] buffer) {
         int len = r.nextInt(5) + 5;
         int i = 0;
         buffer[i++] = CAPS_CHARS.charAt(r.nextInt(CAPS_CHARS.length()));
