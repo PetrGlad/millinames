@@ -71,23 +71,23 @@ public class TablePanel extends VerticalPanel {
         source.getBatch(topRow, pageSize, sortOrder, new AsyncCallback<List<String[]>>() {
             @Override
             public void onFailure(Throwable caught) {
+                // TODO Show notification
             }
 
             @Override
             public void onSuccess(List<String[]> result) {
                 dataPagePanel.setHeight((result.size() * rowHeight) + "px");
-                while (dataPagePanel.getWidgetCount() > 0)
-                    dataPagePanel.remove(0);
-                for (String[] row : result)
-                    dataPagePanel.add(formatRow(row));
+                while (dataPagePanel.getWidgetCount() < result.size()) {
+                    Label w = new Label();
+                    w.setHeight(rowHeight + "px");
+                    dataPagePanel.add(w);
+                }
+                for (int i = 0; i < result.size(); i++) {
+                    String[] row = result.get(i);
+                    ((Label)dataPagePanel.getWidget(i)).setText(row[0] + " " + row[1]);
+                }
                 contentPanel.setHeight(totalHeight + "px");
             }
         });
-    }
-
-    public Widget formatRow(String[] columns) {
-        Label html = new Label(columns[0] + " " + columns[1]);
-        html.setHeight(rowHeight + "px");
-        return html;
     }
 }

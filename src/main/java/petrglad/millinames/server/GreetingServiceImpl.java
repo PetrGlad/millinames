@@ -96,7 +96,7 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         try {
             dataSource = new DriverDataSource(null, "jdbc:hsqldb:file:db/millinames-database", "sa", ""); // ;shutdown=true
             doDbMigration();
-            LOG.info("Database ready,");
+            LOG.info("Database is ready,");
             cacheData();
         } catch (Exception e) {
             throw new ServletException(e);
@@ -146,7 +146,7 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         LOG.info("Indexing.");
         for (int c = 0; c < indexes.length; c++)
             indexes[c] = sortIndexed(records, c);
-        LOG.info("Cache initialized.");
+        LOG.info("Cache is initialized.");
         return new DataHolder(records, indexes);
     }
 
@@ -224,7 +224,8 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
 //        statement.execute("checkpoint");
 //        statement.execute("drop index names_first");
 //        statement.execute("drop index names_last");
-//        statement.execute("delete from names");
+//        disposeCached(); // Save memory for delete operation
+//         statement.execute("delete from names"); // At required 512M this causes OOME even on 32bit VM
         statement.execute("drop table names"); // XXX This will interfere with opened cursors
         // XXX duplicates flyway configs:
         statement.execute("create cached table names (\n" +
