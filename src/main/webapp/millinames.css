@@ -32,3 +32,19 @@ h1 {
 #closeButton {
   margin: 15px 6px 6px;
 }
+
+
+.tableHeader {
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.nameField {
+    width: 50%;
+    padding: 3px;
+}
+
+.rowPanel {
+    width: 100%;
+
+}

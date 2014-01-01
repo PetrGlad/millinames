@@ -4,6 +4,7 @@ import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.ClickHandler;
 import com.google.gwt.event.dom.client.ScrollEvent;
 import com.google.gwt.event.dom.client.ScrollHandler;
+import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
 
@@ -13,23 +14,34 @@ public class TablePanel extends VerticalPanel {
 
     private int pageSize = 20;
 
-    private int LIST_SIZE = 1000000; // FIXME Hardcode
+    private final int LIST_SIZE = 1000000; // XXX Hardcode
 
     private GreetingServiceAsync source;
 
     final int rowHeight = 20;
-    VerticalPanel dataPagePanel;
+    Grid dataPagePanel;
     ScrollPanel scroll;
     AbsolutePanel contentPanel;
     private boolean sortOrder;
 
     public TablePanel(GreetingServiceAsync rows) {
         this.source = rows;
-        HorizontalPanel header = new HorizontalPanel();
-        Label nameHeader = new Label("Name");
-        header.add(nameHeader);
-        Label lastNameHeader = new Label("Last name");
-        header.add(lastNameHeader);
+        final Grid header = new Grid(1, 2);
+        header.setStyleName("tableHeader");
+        header.setWidth("100%");
+        header.setText(0, 0, "Name");
+        header.setText(0, 1, "Last name");
+        header.getColumnFormatter().setWidth(0, "50%");
+        header.getColumnFormatter().setWidth(0, "50%");
+        header.addClickHandler(new ClickHandler() {
+            @Override
+            public void onClick(ClickEvent event) {
+                int cellIndex = header.getCellForEvent(event).getCellIndex();
+                sortOrder = cellIndex == 0;
+                loadPage(scroll.getVerticalScrollPosition());
+            }
+        });
+
         add(header);
 
         scroll = new ScrollPanel();
@@ -42,26 +54,14 @@ public class TablePanel extends VerticalPanel {
         });
         contentPanel = new AbsolutePanel();
         contentPanel.setWidth("100%");
-        dataPagePanel = new VerticalPanel();
+        dataPagePanel = new Grid(0, 2);
+        dataPagePanel.getColumnFormatter().setWidth(0, "50%");
+        dataPagePanel.getColumnFormatter().setWidth(1, "50%");
+        dataPagePanel.setWidth("100%");
         contentPanel.add(dataPagePanel);
         scroll.add(contentPanel);
         add(scroll);
         loadPage(0);
-
-        nameHeader.addClickHandler(new ClickHandler() {
-            @Override
-            public void onClick(ClickEvent event) {
-                sortOrder = true;
-                loadPage(scroll.getVerticalScrollPosition());
-            }
-        });
-        lastNameHeader.addClickHandler(new ClickHandler() {
-            @Override
-            public void onClick(ClickEvent event) {
-                sortOrder = false;
-                loadPage(scroll.getVerticalScrollPosition());
-            }
-        });
     }
 
     public void loadPage(int scrollPosition) {
@@ -77,14 +77,11 @@ public class TablePanel extends VerticalPanel {
             @Override
             public void onSuccess(List<String[]> result) {
                 dataPagePanel.setHeight((result.size() * rowHeight) + "px");
-                while (dataPagePanel.getWidgetCount() < result.size()) {
-                    Label w = new Label();
-                    w.setHeight(rowHeight + "px");
-                    dataPagePanel.add(w);
-                }
+                dataPagePanel.resize(result.size(), 2);
                 for (int i = 0; i < result.size(); i++) {
                     String[] row = result.get(i);
-                    ((Label)dataPagePanel.getWidget(i)).setText(row[0] + " " + row[1]);
+                    dataPagePanel.setText(i, 0, row[0]);
+                    dataPagePanel.setText(i, 1, row[1]);
                 }
                 contentPanel.setHeight(totalHeight + "px");
             }
