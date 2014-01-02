@@ -8,12 +8,7 @@ import com.google.gwt.event.shared.EventBus;
 import com.google.gwt.event.shared.SimpleEventBus;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
-import com.google.web.bindery.requestfactory.shared.Receiver;
-import petrglad.millinames.client.requestfactory.FullNameProxy;
-import petrglad.millinames.client.requestfactory.NamesRequest;
 import petrglad.millinames.client.requestfactory.NamesRequestFactory;
-
-import java.util.List;
 
 public class Millinames implements EntryPoint {
 
@@ -22,6 +17,7 @@ public class Millinames implements EntryPoint {
      */
     private final NameServiceAsync greetingService = GWT.create(NameService.class);
     private NamesRequestFactory requestFactory;
+    private Label messageBox;
 
     /**
      * This is the entry point method.
@@ -29,35 +25,43 @@ public class Millinames implements EntryPoint {
     // TODO Use xml layouts wherever reasonable
     public void onModuleLoad() {
         initRequestFactory();
+        final TabPanel tabs = new TabPanel();
+        tabs.add(makeRegenerateButton(), "Operations");
+        tabs.add(new TablePanel(requestFactory, 1000000), "Data");
+        tabs.selectTab(0);
+        tabs.setWidth("250px");
 
-        Widget dataPanel = new TablePanel(requestFactory);
+        VerticalPanel vp = new VerticalPanel();
+        vp.add(tabs);
+        messageBox = new Label();
+        messageBox.setStyleName("notification");
+        vp.add(messageBox);
+        RootPanel.get("nameTable").add(vp);
+    }
+
+    private Button makeRegenerateButton() {
         final Button regenerateButton = new Button("Reinitialize data");
         regenerateButton.addClickHandler(new ClickHandler() {
             @Override
             public void onClick(ClickEvent event) {
                 regenerateButton.setEnabled(false);
+                showNotification("Regenerating data.");
                 greetingService.regenerate(new AsyncCallback<String>() {
                     @Override
                     public void onFailure(Throwable caught) {
-                        showDialog("Error regenerating data.");
+                        showNotification("Error regenerating data.");
                         regenerateButton.setEnabled(true);
                     }
 
                     @Override
                     public void onSuccess(String result) {
-                        showDialog("Regeneration finished.\n" + result);
+                        showNotification(result);
                         regenerateButton.setEnabled(true);
                     }
                 });
             }
         });
-
-        TabPanel tabs = new TabPanel();
-        tabs.add(regenerateButton, "Operations");
-        tabs.add(dataPanel, "Data");
-        tabs.selectTab(0);
-        tabs.setWidth("250px");
-        RootPanel.get("nameTable").add(tabs);
+        return regenerateButton;
     }
 
     private void initRequestFactory() {
@@ -66,16 +70,7 @@ public class Millinames implements EntryPoint {
         requestFactory.initialize(eventBus);
     }
 
-    public void showDialog(String message) {
-        final DialogBox dialogBox = new DialogBox();
-        dialogBox.setText(message);
-        final Button closeButton = new Button("Close");
-        dialogBox.add(closeButton);
-        closeButton.addClickHandler(new ClickHandler() {
-            public void onClick(ClickEvent event) {
-                dialogBox.hide();
-            }
-        });
-        dialogBox.show();
+    public void showNotification(String message) {
+        this.messageBox.setText(message);
     }
 }

@@ -2,8 +2,8 @@ package petrglad.millinames.server;
 
 import com.google.gwt.user.server.rpc.RemoteServiceServlet;
 import com.googlecode.flyway.core.Flyway;
-import com.googlecode.flyway.core.util.StopWatch;
 import com.googlecode.flyway.core.util.jdbc.DriverDataSource;
+import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import petrglad.millinames.client.NameService;
@@ -15,6 +15,8 @@ import javax.sql.DataSource;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static petrglad.millinames.shared.Constants.NAME_COLUMN_COUNT;
 
 /**
  * The server side implementation of the RPC service.
@@ -40,12 +42,9 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
     private static final String ABC_CHARS = "abcdefghijklmnopqrstuvwxyz";
     private static final CharSequence CAPS_CHARS = ABC_CHARS.toUpperCase();
     private static final CharSequence NAME_CHARS = ABC_CHARS + "0123456789";
-
     private static final AtomicBoolean DATA_LOCKED = new AtomicBoolean(false);
-    private static final int COLUMN_COUNT = 2;
 
     private DataSource dataSource;
-
     private DataHolder data;
 
     @Override
@@ -70,12 +69,13 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
             LOG.error("Database error", e);
             throw new RuntimeException(e);
         } finally {
-            if (conn != null)
+            if (conn != null) {
                 try {
                     conn.close();
                 } catch (SQLException e) {
                     LOG.error("Can not close connection", e);
                 }
+            }
         }
     }
 
@@ -87,7 +87,6 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
             @Override
             public Void put(Connection conn) throws SQLException {
                 conn.createStatement().execute("shutdown");
-                conn.commit();
                 return null;
             }
         });
@@ -99,7 +98,7 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
         try {
             dataSource = new DriverDataSource(null, "jdbc:hsqldb:file:db/millinames-database", "sa", ""); // ;shutdown=true
             doDbMigration();
-            LOG.info("Database is ready,");
+            LOG.info("Database is ready.");
             cacheData();
         } catch (Exception e) {
             throw new ServletException(e);
@@ -118,8 +117,8 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
 
     @Override
     public List<String[]> getBatch(final int row, final int count, final int orderColumn) {
+        Assert.assertTrue(0 <= orderColumn && orderColumn < NAME_COLUMN_COUNT);
         cacheData();
-        assert data != null;
         List<String[]> result = new ArrayList<String[]>(count);
         for (int i = row; i < row + count; i++)
             result.add(data.get(i, orderColumn));
@@ -134,6 +133,7 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
                 }
             }
         }
+        assert data != null;
     }
 
     private void disposeCached() {
@@ -145,7 +145,7 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
     private DataHolder sortData() {
         LOG.info("Loading data.");
         final String[][] records = loadAll();
-        final Integer[][] indexes = new Integer[COLUMN_COUNT][];
+        final Integer[][] indexes = new Integer[NAME_COLUMN_COUNT][];
         LOG.info("Indexing.");
         for (int c = 0; c < indexes.length; c++)
             indexes[c] = sortIndexed(records, c);
@@ -157,28 +157,33 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
         return withConnection(new Handler<Connection, String[][]>() {
             @Override
             public String[][] put(Connection conn) throws SQLException {
-                Statement stat = conn.createStatement();
-                stat.execute("select count(*) from names");
-                int count;
-                {
+                final Statement stat = conn.createStatement();
+                try {
+                    int count = getRowCount(stat);
+                    stat.execute("select first_name, last_name from names");
                     ResultSet rs = stat.getResultSet();
-                    rs.next();
-                    count = rs.getInt(1);
+                    String[][] result = new String[count][];
+                    int i = 0;
+                    while (rs.next()) {
+                        result[i++] = new String[]{rs.getString("first_name"), rs.getString("last_name")};
+                    }
+                    return result;
+                } finally {
+                    stat.close();
                 }
-                stat.execute("select first_name, last_name from names");
-                ResultSet rs = stat.getResultSet();
-                String[][] result = new String[count][];
-                int i = 0;
-                while (rs.next()) {
-                    result[i++] = new String[]{rs.getString("first_name"), rs.getString("last_name")};
-                }
-                return result;
             }
         });
     }
 
+    private int getRowCount(Statement stat) throws SQLException {
+        stat.execute("select count(*) from names");
+        ResultSet rs = stat.getResultSet();
+        rs.next();
+        return rs.getInt(1);
+    }
+
     private Integer[] sortIndexed(final String[][] records, final int column) {
-        long t = System.currentTimeMillis();
+        final long t = System.currentTimeMillis();
         Integer[] index = new Integer[records.length];
         for (int i = 0; i < records.length; i++) {
             index[i] = i;
@@ -199,13 +204,20 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
         LOG.debug("Regenerate invoked.");
         try {
             if (!DATA_LOCKED.compareAndSet(false, true)) {
+                LOG.info("Data is locked.");
                 return "Data is locked at the moment. Retry later.";
             }
             return withConnection(new Handler<Connection, String>() {
                 @Override
                 public String put(Connection conn) throws SQLException {
-                    int count = regenerateData(conn);
-                    return "Generated " + count + " records.";
+                    LOG.info("Regenerating data.");
+                    final long t = System.currentTimeMillis();
+                    int N = 1000000;
+                    reinsertRecords(conn, N);
+                    disposeCached();
+                    cacheData();
+                    LOG.debug("Regenerated data in " + ((System.currentTimeMillis() - t) / 1000) + " sec.");
+                    return "Generated " + N + " records.";
                 }
             });
         } finally {
@@ -213,47 +225,50 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
         }
     }
 
-    private int regenerateData(Connection conn) throws SQLException {
-        LOG.info("Reinitializing data.");
+    private void reinsertRecords(Connection conn, int n) throws SQLException {
         conn.setAutoCommit(false);
-        final StopWatch sw = new StopWatch();
-        sw.start();
-        Statement statement = conn.createStatement();
+        final Statement statement = conn.createStatement();
+        try {
+            deleteData(statement);
+            // See also http://hsqldb.org/doc/guide/deployment-chapt.html
+            // "Bulk Inserts, Updates and Deletes"
+            final PreparedStatement stat = conn.prepareStatement("insert into names(first_name, last_name) values (?, ?)");
+
+            final Random r = new Random();
+            char[] buffer = new char[10];
+            LOG.info("Inserting new data.");
+            for (int i = 0; i < n; i++) {
+                stat.setString(1, genName(r, buffer));
+                stat.setString(2, genName(r, buffer));
+                stat.addBatch();
+                if (i % 5000 == 0) {
+                    stat.executeBatch();
+                    conn.commit();
+                }
+                if (i % 100000 == 0) {
+                    LOG.info("{} rows inserted.", i);
+                }
+            }
+            stat.executeBatch();
+            conn.commit();
+            LOG.info("New data inserted.");
+        } finally {
+            statement.close();
+        }
+    }
+
+    private void deleteData(Statement statement) throws SQLException {
         LOG.info("Deleting old data.");
+        /* Just invoking "delete from names" is slow even without indexes
+           and causes OOME at required 512M heap (mostly due to excessive GC time) even on 32bit VM
+         */
         statement.execute("drop table names"); // XXX This will interfere with opened cursors
-        // XXX duplicates flyway configs:
+        // TODO This duplicates flyway configs, need to share DDL somehow (or invoke flyway here):
         statement.execute("create cached table names (\n" +
                 "  first_name varchar(10),\n" +
                 "  last_name varchar(10)\n" +
                 ")");
         LOG.info("Data deleted.");
-        // See also http://hsqldb.org/doc/guide/deployment-chapt.html
-        // "Bulk Inserts, Updates and Deletes"
-        final PreparedStatement stat = conn.prepareStatement("insert into names(first_name, last_name) values (?, ?)");
-        int N = 1000000;
-        final Random r = new Random();
-        char[] buffer = new char[10];
-        LOG.info("Inserting new data.");
-        for (int i = 0; i < N; i++) {
-            stat.setString(1, genName(r, buffer));
-            stat.setString(2, genName(r, buffer));
-            stat.addBatch();
-            if (i % 5000 == 0) {
-                stat.executeBatch();
-                conn.commit();
-            }
-            if (i % 100000 == 0) {
-                LOG.info("{} rows inserted.", i);
-            }
-        }
-        stat.executeBatch();
-        conn.commit();
-        LOG.info("New data inserted.");
-        disposeCached();
-        cacheData();
-        sw.stop();
-        LOG.info("Regenerated data in " + (sw.getTotalTimeMillis() / 1000) + " sec.");
-        return N;
     }
 
     static String genName(Random r, char[] buffer) {

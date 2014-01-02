@@ -46,5 +46,14 @@ h1 {
 
 .rowPanel {
     width: 100%;
+}
 
+.notification {
+    display: block:
+    width: 100%;
+    font-style: italic;
+    font-size: small;
+    position: fixed;
+    bottom: 1em;
+    left: 1em;
 }
