@@ -9,9 +9,8 @@ import java.util.List;
  * The client side stub for the RPC service.
  */
 @RemoteServiceRelativePath("greet")
-public interface GreetingService extends RemoteService {
+public interface NameService extends RemoteService {
     String regenerate();
 
-    // TODO This is slow: prototype stub
-    List<String[]> getBatch(int start, int count, boolean orderByFirst);
+    List<String[]> getBatch(int start, int count, int orderColumn);
 }

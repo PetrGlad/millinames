@@ -4,28 +4,32 @@ import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.ClickHandler;
 import com.google.gwt.event.dom.client.ScrollEvent;
 import com.google.gwt.event.dom.client.ScrollHandler;
-import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
+import com.google.web.bindery.requestfactory.shared.Receiver;
+import petrglad.millinames.client.requestfactory.FullNameProxy;
+import petrglad.millinames.client.requestfactory.NamesRequest;
+import petrglad.millinames.client.requestfactory.NamesRequestFactory;
 
 import java.util.List;
 
+// TODO Use xml layouts wherever reasonable
 public class TablePanel extends VerticalPanel {
 
     private int pageSize = 20;
 
     private final int LIST_SIZE = 1000000; // XXX Hardcode
 
-    private GreetingServiceAsync source;
+    private NamesRequestFactory requests;
 
     final int rowHeight = 20;
     Grid dataPagePanel;
     ScrollPanel scroll;
     AbsolutePanel contentPanel;
-    private boolean sortOrder;
+    private int sortColumn = 0;
 
-    public TablePanel(GreetingServiceAsync rows) {
-        this.source = rows;
+    public TablePanel(NamesRequestFactory requests) {
+        this.requests = requests;
         final Grid header = new Grid(1, 2);
         header.setStyleName("tableHeader");
         header.setWidth("100%");
@@ -36,8 +40,7 @@ public class TablePanel extends VerticalPanel {
         header.addClickHandler(new ClickHandler() {
             @Override
             public void onClick(ClickEvent event) {
-                int cellIndex = header.getCellForEvent(event).getCellIndex();
-                sortOrder = cellIndex == 0;
+                sortColumn = header.getCellForEvent(event).getCellIndex();
                 loadPage(scroll.getVerticalScrollPosition());
             }
         });
@@ -68,20 +71,16 @@ public class TablePanel extends VerticalPanel {
         final int totalHeight = rowHeight * LIST_SIZE;
         final int topRow = scrollPosition / rowHeight;
         contentPanel.setWidgetPosition(dataPagePanel, 0, scrollPosition);
-        source.getBatch(topRow, pageSize, sortOrder, new AsyncCallback<List<String[]>>() {
-            @Override
-            public void onFailure(Throwable caught) {
-                // TODO Show notification
-            }
 
+        requests.getNamesRequest().getBatch(topRow, pageSize, sortColumn).fire(new Receiver<List<FullNameProxy>>() {
             @Override
-            public void onSuccess(List<String[]> result) {
+            public void onSuccess(List<FullNameProxy> result) {
                 dataPagePanel.setHeight((result.size() * rowHeight) + "px");
                 dataPagePanel.resize(result.size(), 2);
                 for (int i = 0; i < result.size(); i++) {
-                    String[] row = result.get(i);
-                    dataPagePanel.setText(i, 0, row[0]);
-                    dataPagePanel.setText(i, 1, row[1]);
+                    FullNameProxy name = result.get(i);
+                    dataPagePanel.setText(i, 0, name.getFirstName());
+                    dataPagePanel.setText(i, 1, name.getLastName());
                 }
                 contentPanel.setHeight(totalHeight + "px");
             }

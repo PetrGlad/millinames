@@ -4,35 +4,33 @@ import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.event.shared.EventBus;
+import com.google.gwt.event.shared.SimpleEventBus;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
+import com.google.web.bindery.requestfactory.shared.Receiver;
+import petrglad.millinames.client.requestfactory.FullNameProxy;
+import petrglad.millinames.client.requestfactory.NamesRequest;
+import petrglad.millinames.client.requestfactory.NamesRequestFactory;
+
+import java.util.List;
 
 public class Millinames implements EntryPoint {
 
     /**
      * Create a remote service proxy to talk to the server-side Greeting service.
      */
-    private final GreetingServiceAsync greetingService = GWT.create(GreetingService.class);
-
-//    /**
-//     * The message displayed to the user when the server cannot be reached or
-//     * returns an error.
-//     */
-//    private static final String SERVER_ERROR = "An error occurred while "
-//            + "attempting to contact the server. Please check your network "
-//            + "connection and try again.";
-//
-
-
-//    private final Messages messages = GWT.create(Messages.class);
+    private final NameServiceAsync greetingService = GWT.create(NameService.class);
+    private NamesRequestFactory requestFactory;
 
     /**
      * This is the entry point method.
      */
+    // TODO Use xml layouts wherever reasonable
     public void onModuleLoad() {
+        initRequestFactory();
 
-        Widget dataPanel = new TablePanel(greetingService);
-
+        Widget dataPanel = new TablePanel(requestFactory);
         final Button regenerateButton = new Button("Reinitialize data");
         regenerateButton.addClickHandler(new ClickHandler() {
             @Override
@@ -47,7 +45,7 @@ public class Millinames implements EntryPoint {
 
                     @Override
                     public void onSuccess(String result) {
-                        showDialog("Regeneration completed.");
+                        showDialog("Regeneration finished.\n" + result);
                         regenerateButton.setEnabled(true);
                     }
                 });
@@ -58,8 +56,14 @@ public class Millinames implements EntryPoint {
         tabs.add(regenerateButton, "Operations");
         tabs.add(dataPanel, "Data");
         tabs.selectTab(0);
-        tabs.setWidth("30%");
+        tabs.setWidth("250px");
         RootPanel.get("nameTable").add(tabs);
+    }
+
+    private void initRequestFactory() {
+        final EventBus eventBus = new SimpleEventBus();
+        requestFactory = GWT.create(NamesRequestFactory.class);
+        requestFactory.initialize(eventBus);
     }
 
     public void showDialog(String message) {

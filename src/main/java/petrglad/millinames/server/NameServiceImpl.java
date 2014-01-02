@@ -6,7 +6,8 @@ import com.googlecode.flyway.core.util.StopWatch;
 import com.googlecode.flyway.core.util.jdbc.DriverDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import petrglad.millinames.client.GreetingService;
+import petrglad.millinames.client.NameService;
+import petrglad.millinames.server.requestfactory.NameLocator;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * The server side implementation of the RPC service.
  */
 @SuppressWarnings("serial")
-public class GreetingServiceImpl extends RemoteServiceServlet implements GreetingService {
+public class NameServiceImpl extends RemoteServiceServlet implements NameService {
 
     private static class DataHolder {
         public final String[][] data; // [row, column]
@@ -35,7 +36,7 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         }
     }
 
-    private static final Logger LOG = LoggerFactory.getLogger(GreetingServiceImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(NameServiceImpl.class);
     private static final String ABC_CHARS = "abcdefghijklmnopqrstuvwxyz";
     private static final CharSequence CAPS_CHARS = ABC_CHARS.toUpperCase();
     private static final CharSequence NAME_CHARS = ABC_CHARS + "0123456789";
@@ -52,6 +53,8 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         LOG.info("Initializing servlet");
         super.init(config);
         initDb();
+        NameLocator.setService(this); // TODO Use DI instead.
+
     }
 
     public interface Handler<T, P> {
@@ -114,12 +117,12 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
     }
 
     @Override
-    public List<String[]> getBatch(final int row, final int count, final boolean orderByFirst) {
+    public List<String[]> getBatch(final int row, final int count, final int orderColumn) {
         cacheData();
         assert data != null;
         List<String[]> result = new ArrayList<String[]>(count);
         for (int i = row; i < row + count; i++)
-            result.add(data.get(i, orderByFirst ? 0 : 1));
+            result.add(data.get(i, orderColumn));
         return result;
     }
 
@@ -168,9 +171,6 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
                 int i = 0;
                 while (rs.next()) {
                     result[i++] = new String[]{rs.getString("first_name"), rs.getString("last_name")};
-                    if (i % 100000 == 0) {
-                        LOG.info("{} rows cached.", i);
-                    }
                 }
                 return result;
             }
@@ -189,7 +189,7 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
                 return records[o1][column].compareTo(records[o2][column]);
             }
         });
-        LOG.info("Indexing complete in {}", System.currentTimeMillis() - t);
+        LOG.info("Indexing {} complete in {}", column, System.currentTimeMillis() - t);
         return index;
     }
 
@@ -213,37 +213,22 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
         }
     }
 
-    public int regenerateData(Connection conn) throws SQLException {
+    private int regenerateData(Connection conn) throws SQLException {
         LOG.info("Reinitializing data.");
         conn.setAutoCommit(false);
         final StopWatch sw = new StopWatch();
         sw.start();
         Statement statement = conn.createStatement();
         LOG.info("Deleting old data.");
-//        statement.execute("set files log false");
-//        statement.execute("checkpoint");
-//        statement.execute("drop index names_first");
-//        statement.execute("drop index names_last");
-//        disposeCached(); // Save memory for delete operation
-//         statement.execute("delete from names"); // At required 512M this causes OOME even on 32bit VM
         statement.execute("drop table names"); // XXX This will interfere with opened cursors
         // XXX duplicates flyway configs:
         statement.execute("create cached table names (\n" +
                 "  first_name varchar(10),\n" +
                 "  last_name varchar(10)\n" +
                 ")");
-//        statement.execute("create index names_first on names(first_name)");
-//        statement.execute("create index names_last on names(last_name)");
         LOG.info("Data deleted.");
-
-        // Hehe, someone did this already
-        // http://stackoverflow.com/questions/13507947/hsqldb-optimize-1-000-000-bulk-insert
-        // http://stackoverflow.com/questions/13495452/create-embedded-hsqldb-in-web-app-directory
-
-        // See http://hsqldb.org/doc/guide/deployment-chapt.html
+        // See also http://hsqldb.org/doc/guide/deployment-chapt.html
         // "Bulk Inserts, Updates and Deletes"
-        // statement.execute("set files log false");
-        // statement.execute("checkpoint");
         final PreparedStatement stat = conn.prepareStatement("insert into names(first_name, last_name) values (?, ?)");
         int N = 1000000;
         final Random r = new Random();
@@ -257,19 +242,13 @@ public class GreetingServiceImpl extends RemoteServiceServlet implements Greetin
                 stat.executeBatch();
                 conn.commit();
             }
-            if (i % 50000 == 0) {
+            if (i % 100000 == 0) {
                 LOG.info("{} rows inserted.", i);
             }
         }
         stat.executeBatch();
         conn.commit();
         LOG.info("New data inserted.");
-
-//        statement.execute("set files log true");
-//        statement.execute("checkpoint");
-//        LOG.info("Indexing");
-
-        conn.commit();
         disposeCached();
         cacheData();
         sw.stop();

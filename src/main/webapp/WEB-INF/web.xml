@@ -7,13 +7,29 @@
 
     <servlet>
         <servlet-name>greetServlet</servlet-name>
-        <servlet-class>petrglad.millinames.server.GreetingServiceImpl</servlet-class>
+        <servlet-class>petrglad.millinames.server.NameServiceImpl</servlet-class>
         <load-on-startup>10</load-on-startup>
+    </servlet>
+
+    <servlet>
+        <servlet-name>requestFactoryServlet</servlet-name>
+        <servlet-class>com.google.web.bindery.requestfactory.server.RequestFactoryServlet</servlet-class>
+        <init-param>
+            <param-name>symbolMapsDirectory</param-name>
+            <!-- You'll need to compile with -extras and move the symbolMaps directory
+                to this location if you want stack trace deobfuscation to work -->
+            <param-value>WEB-INF/classes/symbolMaps/</param-value>
+        </init-param>
     </servlet>
 
     <servlet-mapping>
         <servlet-name>greetServlet</servlet-name>
         <url-pattern>/millinames/greet</url-pattern>
+    </servlet-mapping>
+
+    <servlet-mapping>
+        <servlet-name>requestFactoryServlet</servlet-name>
+        <url-pattern>/gwtRequest</url-pattern>
     </servlet-mapping>
 
     <!-- Default page to serve -->
