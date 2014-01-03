@@ -17,6 +17,7 @@ public class Millinames implements EntryPoint {
      */
     private final NameServiceAsync greetingService = GWT.create(NameService.class);
     private NamesRequestFactory requestFactory;
+    private TablePanel tablePanel;
     private Label messageBox;
 
     /**
@@ -27,7 +28,8 @@ public class Millinames implements EntryPoint {
         initRequestFactory();
         final TabPanel tabs = new TabPanel();
         tabs.add(makeRegenerateButton(), "Operations");
-        tabs.add(new TablePanel(requestFactory, 1000000), "Data");
+        tablePanel = new TablePanel(requestFactory, 1000000);
+        tabs.add(tablePanel, "Data");
         tabs.selectTab(0);
         tabs.setWidth("250px");
 
@@ -57,6 +59,7 @@ public class Millinames implements EntryPoint {
                     public void onSuccess(String result) {
                         showNotification(result);
                         regenerateButton.setEnabled(true);
+                        tablePanel.loadPage(0);
                     }
                 });
             }

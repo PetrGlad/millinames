@@ -68,6 +68,48 @@
             <version>1.0.0.GA</version>
             <classifier>sources</classifier>
         </dependency>
+
+        <!-- RequestFactory belongings -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20131018</version>
+        </dependency>
+
+        <!-- Hibernate bean validation binary for the server -->
+        <dependency>
+            <groupId>org.hibernate</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>4.1.0.Final</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>javax.xml.bind</groupId>
+                    <artifactId>jaxb-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.sun.xml.bind</groupId>
+                    <artifactId>jaxb-impl</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- Hibernate bean validation source for the GWT client -->
+        <dependency>
+            <groupId>org.hibernate</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>4.1.0.Final</version>
+            <classifier>sources</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>javax.xml.bind</groupId>
+                    <artifactId>jaxb-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.sun.xml.bind</groupId>
+                    <artifactId>jaxb-impl</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <dependency>
             <groupId>org.hsqldb</groupId>
             <artifactId>hsqldb</artifactId>
@@ -171,6 +213,11 @@
 
             <plugin>
                 <groupId>org.apache.tomcat.maven</groupId>
+                <artifactId>tomcat6-maven-plugin</artifactId>
+                <version>2.2</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.tomcat.maven</groupId>
                 <artifactId>tomcat7-maven-plugin</artifactId>
                 <version>2.2</version>
 
@@ -179,21 +226,6 @@
                     <port>8181</port>
                     <!-- application path always starts with /-->
                     <path>/petrglad-gmail-com</path>
-                    <!-- optional path to a context file -->
-                    <!--<contextFile>${tomcatContextXml}</contextFile>-->
-                    <!-- optional system propoerties you want to add -->
-                    <!--<systemProperties>-->
-                    <!--<appserver.base>${project.build.directory}/appserver-base</appserver.base>-->
-                    <!--<appserver.home>${project.build.directory}/appserver-home</appserver.home>-->
-                    <!--<derby.system.home>${project.build.directory}/appserver-base/logs</derby.system.home>-->
-                    <!--<java.io.tmpdir>${project.build.directory}</java.io.tmpdir>-->
-                    <!--</systemProperties>-->
-                    <!-- if you want to use test dependencies rather than only runtime -->
-                    <!--<useTestClasspath>false</useTestClasspath>-->
-                    <!--&lt;!&ndash; optional if you want to add some extra directories into the classloader &ndash;&gt;-->
-                    <!--<additionalClasspathDirs>-->
-                    <!--<additionalClasspathDir></additionalClasspathDir>-->
-                    <!--</additionalClasspathDirs>-->
                 </configuration>
             </plugin>
         </plugins>

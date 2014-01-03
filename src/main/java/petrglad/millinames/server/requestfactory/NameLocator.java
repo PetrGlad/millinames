@@ -15,8 +15,7 @@ public class NameLocator extends Locator<FullName, String> {
 
     private static NameService service;
 
-    // FIXME I hope that there is saner way to do it (at least we can use DI here).
-    // XXX Methods here are required to be static but I need lifecycle (at least 'shutdown')
+    // TODO Subclass ServiceLayer to initialize this properly.
     public static void setService(NameService service) {
         Assert.assertNull("Service is already attached.", NameLocator.service);
         NameLocator.service = service;

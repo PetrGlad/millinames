@@ -51,9 +51,8 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
     public void init(ServletConfig config) throws ServletException {
         LOG.info("Initializing servlet");
         super.init(config);
-        initDb();
+        initDb(getServletContext().getRealPath("/"));
         NameLocator.setService(this); // TODO Use DI instead.
-
     }
 
     public interface Handler<T, P> {
@@ -93,10 +92,12 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
         super.destroy();
     }
 
-    private void initDb() throws ServletException {
-        LOG.info("Opening database.");
+    private void initDb(String dbPath) throws ServletException {
+        LOG.info("Opening database. path={}", dbPath);
         try {
-            dataSource = new DriverDataSource(null, "jdbc:hsqldb:file:db/millinames-database", "sa", ""); // ;shutdown=true
+            dataSource = new DriverDataSource(null,
+                    "jdbc:hsqldb:file:" + dbPath + "/db/millinames", // ;shutdown=true
+                    "sa", "");
             doDbMigration();
             LOG.info("Database is ready.");
             cacheData();
