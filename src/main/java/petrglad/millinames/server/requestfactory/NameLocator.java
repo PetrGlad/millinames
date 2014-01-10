@@ -21,11 +21,12 @@ public class NameLocator extends Locator<FullName, String> {
         NameLocator.service = service;
     }
 
-    public static List<FullName> getBatch(int start, int count, int orderColumn) {
+    public static List<FullName> getBatch(final int start, final int count,
+                                          final int orderColumn, final boolean ascending) {
         Assert.assertNotNull("Service is not attached.", service);
         final long t = System.nanoTime();
         List<FullName> result = new ArrayList<FullName>();
-        for (String[] strings : service.getBatch(start, count, orderColumn))
+        for (String[] strings : service.getBatch(start, count, orderColumn, ascending))
             result.add(new FullName(strings[0], strings[1]));
         LOG.debug("Batch query time {} uSec.", (System.nanoTime() - t) / 1000);
         return result;

@@ -36,6 +36,10 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
         public String[] get(int row, int index) {
             return data[indexes[index][row]];
         }
+
+        public int getSize() {
+            return data.length;
+        }
     }
 
     private static final Logger LOG = LoggerFactory.getLogger(NameServiceImpl.class);
@@ -117,12 +121,18 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
     }
 
     @Override
-    public List<String[]> getBatch(final int row, final int count, final int orderColumn) {
-        Assert.assertTrue(0 <= orderColumn && orderColumn < NAME_COLUMN_COUNT);
-        cacheData();
+    public List<String[]> getBatch(final int row, final int count, final int orderColumn, final boolean ascending) {
+        Assert.assertTrue(Math.abs(orderColumn) < NAME_COLUMN_COUNT);
+        ensureCached();
         List<String[]> result = new ArrayList<String[]>(count);
-        for (int i = row; i < row + count; i++)
-            result.add(data.get(i, orderColumn));
+        if (ascending) {
+            for (int i = row; i < row + count; i++)
+                result.add(data.get(i, orderColumn));
+        } else {
+            final int startRow = data.getSize() - 1 - row;
+            for (int i = startRow; i > startRow - count; i--)
+                result.add(data.get(i, orderColumn));
+        }
         return result;
     }
 

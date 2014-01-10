@@ -27,6 +27,7 @@ public class TablePanel extends VerticalPanel {
     private ScrollPanel scroll;
     private AbsolutePanel contentPanel;
     private int sortColumn = 0;
+    private boolean ascending = true;
 
     public TablePanel(NamesRequestFactory requests, int listSize) {
         this.requests = requests;
@@ -55,18 +56,33 @@ public class TablePanel extends VerticalPanel {
     private Grid makeHeader() {
         final Grid header = new Grid(1, NAME_COLUMN_COUNT);
         header.setStyleName("tableHeader");
-        header.setText(0, 0, "Name");
-        header.setText(0, 1, "Last name");
+        updateColumnHeaders(header);
         header.setWidth("95%");// XXX (layout) Since scrollpanel has scrollbar columns of header are not be aligned with data columns exactly
         setupColumns(header);
         header.addClickHandler(new ClickHandler() {
             @Override
             public void onClick(ClickEvent event) {
-                sortColumn = header.getCellForEvent(event).getCellIndex();
+                int newSortColumn = header.getCellForEvent(event).getCellIndex();
+                if (sortColumn == newSortColumn) {
+                    ascending = !ascending;
+                } else {
+                    ascending = true;
+                    sortColumn = newSortColumn;
+                }
+                updateColumnHeaders(header);
                 loadPage(scroll.getVerticalScrollPosition());
             }
         });
         return header;
+    }
+
+    private void updateColumnHeaders(Grid header) {
+        header.setText(0, 0, "Name " + getOrderMark(0));
+        header.setText(0, 1, "Last name " + getOrderMark(1));
+    }
+
+    private String getOrderMark(int i) {
+        return sortColumn == i ? (ascending ? "\u2191" : "\u2193"): "";
     }
 
     private void setupColumns(Grid nameGrid) {
@@ -78,7 +94,7 @@ public class TablePanel extends VerticalPanel {
         final int totalHeight = rowHeight * listSize;
         final int topRow = scrollPosition / rowHeight;
         contentPanel.setWidgetPosition(dataPagePanel, 0, scrollPosition);
-        requests.getNamesRequest().getBatch(topRow, pageSize, sortColumn).fire(new Receiver<List<FullNameProxy>>() {
+        requests.getNamesRequest().getBatch(topRow, pageSize, sortColumn, ascending).fire(new Receiver<List<FullNameProxy>>() {
             @Override
             public void onSuccess(List<FullNameProxy> result) {
                 dataPagePanel.setHeight((result.size() * rowHeight) + "px");

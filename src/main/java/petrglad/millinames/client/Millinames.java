@@ -28,7 +28,7 @@ public class Millinames implements EntryPoint {
         initRequestFactory();
         final TabPanel tabs = new TabPanel();
         tabs.add(makeRegenerateButton(), "Operations");
-        tablePanel = new TablePanel(requestFactory, 1000000);
+        tablePanel = new TablePanel(requestFactory, 1000000); // List size is hard-coded
         tabs.add(tablePanel, "Data");
         tabs.selectTab(0);
         tabs.setWidth("250px");

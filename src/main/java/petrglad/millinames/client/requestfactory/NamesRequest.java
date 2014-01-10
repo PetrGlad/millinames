@@ -9,5 +9,6 @@ import java.util.List;
 
 @Service(NameLocator.class)
 public interface NamesRequest extends RequestContext {
-    Request<List<FullNameProxy>> getBatch(int start, int count, int orderColumn);
+    Request<List<FullNameProxy>> getBatch(final int start, final int count,
+                                          final int orderColumn, final boolean ascending);
 }

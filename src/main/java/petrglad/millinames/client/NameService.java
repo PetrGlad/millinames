@@ -12,5 +12,5 @@ import java.util.List;
 public interface NameService extends RemoteService {
     String regenerate();
 
-    List<String[]> getBatch(int start, int count, int orderColumn);
+    List<String[]> getBatch(int start, int count, int orderColumn, final boolean ascending);
 }
