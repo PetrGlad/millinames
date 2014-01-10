@@ -85,7 +85,6 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
     @Override
     public void destroy() {
         LOG.info("Destroying servlet");
-        disposeCached();
         withConnection(new Handler<Connection, Void>() {
             @Override
             public Void put(Connection conn) throws SQLException {
@@ -104,7 +103,7 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
                     "sa", "");
             doDbMigration();
             LOG.info("Database is ready.");
-            cacheData();
+            ensureCached();
         } catch (Exception e) {
             throw new ServletException(e);
         }
@@ -136,21 +135,19 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
         return result;
     }
 
-    private void cacheData() {
+    private void ensureCached() {
         if (data == null) {
             synchronized (this) {
                 if (data == null) {
-                    data = sortData();
+                    cacheData();
                 }
             }
         }
         assert data != null;
     }
 
-    private void disposeCached() {
-        synchronized (this) {
-            data = null;
-        }
+    private void cacheData() {
+        data = sortData();
     }
 
     private DataHolder sortData() {
@@ -225,7 +222,6 @@ public class NameServiceImpl extends RemoteServiceServlet implements NameService
                     final long t = System.currentTimeMillis();
                     int N = 1000000;
                     reinsertRecords(conn, N);
-                    disposeCached();
                     cacheData();
                     LOG.debug("Regenerated data in " + ((System.currentTimeMillis() - t) / 1000) + " sec.");
                     return "Generated " + N + " records.";
